@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --adapt-bg: #0a0a0f;
+  --adapt-card: #13131a;
+  --adapt-border: #1f1f2e;
+  --adapt-2g: #ef4444;
+  --adapt-3g: #f97316;
+  --adapt-4g: #22c55e;
+  --adapt-wifi: #3b82f6;
+}
+
+body {
+  background: var(--adapt-bg);
+  color: #fff;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  min-height: 100vh;
+}
+
+.tier-indicator {
+  @apply px-3 py-1 rounded-full text-sm font-bold uppercase tracking-wider;
+}
+
+.tier-2g { background: var(--adapt-2g); color: #000; }
+.tier-3g { background: var(--adapt-3g); color: #000; }
+.tier-4g { background: var(--adapt-4g); color: #000; }
+.tier-wifi { background: var(--adapt-wifi); color: #fff; }
+
+.card {
+  background: var(--adapt-card);
+  border: 1px solid var(--adapt-border);
+  @apply rounded-lg p-4;
+}
+
+.metric-value {
+  @apply text-3xl font-bold;
+}
+
+.metric-label {
+  @apply text-xs uppercase tracking-wider text-gray-500;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.pulse-live {
+  animation: pulse-live 1s ease-in-out infinite;
+}
+
+.network-bar {
+  height: 8px;
+  @apply rounded-full transition-all duration-500;
+}
+
+.network-bar.2g { background: var(--adapt-2g); }
+.network-bar.3g { background: var(--adapt-3g); }
+.network-bar.4g { background: var(--adapt-4g); }
+.network-bar.wifi { background: var(--adapt-wifi); }

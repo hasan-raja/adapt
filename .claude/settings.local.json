@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /mnt/f/claude-code/adapt log --oneline -5)"
+    ]
+  }
+}
