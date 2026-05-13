@@ -153,8 +153,8 @@ function App() {
     if (view !== 'dashboard') return
 
     const connect = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = `${protocol}//${window.location.host}/ws`
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = import.meta.env.VITE_WS_URL || `${protocol}//${window.location.hostname}:8000/ws`;
 
       try {
         wsRef.current = new WebSocket(wsUrl)
@@ -185,7 +185,9 @@ function App() {
   const changeTier = async (tier) => {
     setCurrentTier(tier)
     try {
-      await fetch('/api/network/status?force_tier=' + tier, { method: 'GET' })
+      const res = await fetch('/api/network/status?force_tier=' + tier)
+      const data = await res.json()
+      setNetworkStatus(data) // Instant local update
     } catch (e) {
       console.error('Failed to change tier:', e)
     }
@@ -359,7 +361,7 @@ function App() {
           <section className="grid grid-cols-2 gap-4">
             <div className="metric-card">
               <span className="metric-label">Active Model</span>
-              <span className="metric-value text-blue-400">{networkStatus.model_size}</span>
+              <span className="metric-value text-blue-400">{networkStatus.model_size || '---'}</span>
             </div>
             <div className="metric-card">
               <span className="metric-label">Cache Hit</span>

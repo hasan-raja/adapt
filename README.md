@@ -39,10 +39,10 @@ Network fluctuates between WiFi, 4G, and 2G.
 - **Network-Aware**: Real-time QoS probing (bandwidth & latency).
 - **Hysteresis**: Prevents "network flapping" using rolling averages and stability thresholds.
 - **Model Tiers**:
-  - **WiFi**: 30B+ Full Model
-  - **4G**: 7B Medium Model
-  - **3G**: 3B Small Model
-  - **2G**: 1B Tiny Model
+  - **WiFi**: Llama 3.3 70B Versatile
+  - **4G**: Llama 3.1 70B Versatile
+  - **3G**: Llama 3.1 8B Instant
+  - **2G**: Llama 3.1 8B Instant
 
 ### 4. 📊 Live Adaptation Dashboard
 - **Premium UI**: Glassmorphism aesthetic with real-time WebSocket updates.

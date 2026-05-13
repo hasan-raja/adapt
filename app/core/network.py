@@ -114,15 +114,18 @@ class NetworkProbe:
 
     def get_status(self, force_tier: Optional[NetworkTier] = None) -> NetworkStatus:
         """Get current network status."""
+        from app.core.router import select_model_for_tier
+        
         tier = force_tier or self._current_tier
         config = TIER_CONFIG[tier]
+        model_name, _ = select_model_for_tier(tier)
 
         return NetworkStatus(
             tier=tier,
             bandwidth_kbps=config["bandwidth_kbps"],
             latency_ms=config["latency_ms"],
             compression_level=config["compression"],
-            model_size=config["model_size"],
+            model_size=model_name,
             rolling_avg_bandwidth=self._get_rolling_avg(self._bandwidth_history),
             rolling_avg_latency=self._get_rolling_avg(self._latency_history),
         )

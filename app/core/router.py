@@ -7,12 +7,16 @@ from typing import Optional
 from app.models import NetworkTier, CompressionLevel, NetworkStatus
 
 
-# Cost per 1K tokens in INR (based on Sarvam pricing)
+# Cost per 1K tokens in INR
+# Adjusted for Groq/Sarvam tier benchmarks
 COST_PER_1K_TOKENS: dict[str, float] = {
-    "1B": 0.50,    # Tiny models
-    "3B": 1.50,    # Small models
-    "7B": 3.00,    # Medium models
-    "30B+": 8.00,  # Full models
+    "1B": 0.50,
+    "3B": 1.50,
+    "7B": 3.00,
+    "30B+": 8.00,
+    "llama-3.3-70b-versatile": 0.15,
+    "llama-3.1-70b-versatile": 0.10,
+    "llama-3.1-8b-instant": 0.02,
 }
 
 
@@ -63,12 +67,24 @@ def select_model_for_tier(tier: NetworkTier) -> tuple[str, CompressionLevel]:
     Select model size and compression based on network tier.
     Returns (model_name, compression_level).
     """
-    configs = {
-        NetworkTier.WIFI: ("30B+", CompressionLevel.NONE),
-        NetworkTier.TIER_4G: ("7B", CompressionLevel.LIGHT),
-        NetworkTier.TIER_3G: ("3B", CompressionLevel.MEDIUM),
-        NetworkTier.TIER_2G: ("1B", CompressionLevel.AGGRESSIVE),
-    }
+    import os
+    groq_key = os.getenv("GROQ_API_KEY")
+    
+    if groq_key:
+        # Use Groq Specific Models
+        configs = {
+            NetworkTier.WIFI: ("llama-3.3-70b-versatile", CompressionLevel.NONE),
+            NetworkTier.TIER_4G: ("llama-3.1-70b-versatile", CompressionLevel.LIGHT),
+            NetworkTier.TIER_3G: ("llama-3.1-8b-instant", CompressionLevel.MEDIUM),
+            NetworkTier.TIER_2G: ("llama-3.1-8b-instant", CompressionLevel.AGGRESSIVE),
+        }
+    else:
+        configs = {
+            NetworkTier.WIFI: ("30B+", CompressionLevel.NONE),
+            NetworkTier.TIER_4G: ("7B", CompressionLevel.LIGHT),
+            NetworkTier.TIER_3G: ("3B", CompressionLevel.MEDIUM),
+            NetworkTier.TIER_2G: ("1B", CompressionLevel.AGGRESSIVE),
+        }
     return configs.get(tier, ("7B", CompressionLevel.LIGHT))
 
 

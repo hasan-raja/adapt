@@ -5,12 +5,15 @@ FastAPI application with compression, caching, and network-aware routing.
 
 import asyncio
 import os
+from typing import Optional
 from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
+load_dotenv()
+from groq import AsyncGroq
 
 from app.models import (
     NetworkTier,
@@ -45,6 +48,18 @@ DEMO_RESPONSES: dict[str, list[str]] = {
         "Peak quality response. All context preserved.",
     ],
 }
+
+
+# Global client instances for connection pooling
+_groq_client: Optional[AsyncGroq] = None
+
+
+def get_groq_client(api_key: str) -> AsyncGroq:
+    """Get or create singleton Groq client."""
+    global _groq_client
+    if _groq_client is None:
+        _groq_client = AsyncGroq(api_key=api_key)
+    return _groq_client
 
 
 @asynccontextmanager
@@ -85,8 +100,11 @@ async def root():
 
 @app.get("/network/status")
 async def get_network_status(force_tier: NetworkTier = None) -> NetworkStatus:
-    """Get current network status."""
-    status = network_probe.get_status(force_tier=force_tier)
+    """Get current network status and optionally force a tier."""
+    if force_tier:
+        network_probe.set_tier(force_tier)
+    
+    status = network_probe.get_status()
     return status
 
 
@@ -208,22 +226,44 @@ async def call_model(
     Call the model API.
     Falls back to demo responses if no API key available.
     """
-    # Try Sarvam API first
-    sarvam_key = os.getenv("SARVAM_API_KEY")
-    openai_key = os.getenv("OPENAI_API_KEY")
+    # Prioritize Groq for speed
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key:
+        return await call_groq(message, history, tier, groq_key, model_size)
 
+    # Fallback to Sarvam
+    sarvam_key = os.getenv("SARVAM_API_KEY")
     if sarvam_key:
-        # Sarvam API integration
-        # (Full integration would require actual API endpoint)
         return await call_sarvam(message, history, tier, sarvam_key)
 
+    # Fallback to OpenAI
+    openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
-        # OpenAI fallback
         return await call_openai(message, history, tier, openai_key)
 
     # No API key - use demo response
     demo_responses = DEMO_RESPONSES.get(tier, DEMO_RESPONSES[NetworkTier.TIER_4G])
     return demo_responses[0]
+
+
+async def call_groq(message: str, history: list[dict], tier: NetworkTier, api_key: str, model: str) -> str:
+    """Call Groq API for ultra-fast model inference."""
+    client = get_groq_client(api_key)
+    
+    try:
+        chat_completion = await client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": f"You are a helpful AI assistant optimized for {tier.value} network conditions. Keep responses concise."},
+                *[{"role": m["role"], "content": m["content"]} for m in history],
+                {"role": "user", "content": message},
+            ],
+            model=model,
+            max_tokens=500 if tier == NetworkTier.TIER_2G else 1024,
+        )
+        return chat_completion.choices[0].message.content
+    except Exception as e:
+        print(f"Groq API error: {e}")
+        return get_demo_response(tier)
 
 
 async def call_sarvam(message: str, history: list[dict], tier: NetworkTier, api_key: str) -> str:
