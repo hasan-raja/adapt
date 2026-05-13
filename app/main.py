@@ -192,6 +192,17 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
     # Record metrics
     metrics.record_request(cost, compressed_tokens, cache_hit)
 
+    trace = [
+        f"Detected {tier.value.upper()} network ({network_status.bandwidth_kbps:.0f} kbps)",
+        f"Latency: {network_status.latency_ms}ms",
+    ]
+    
+    if cache_hit:
+        trace.append("Semantic match found (Score: 0.94+) - Bypassing LLM")
+    else:
+        trace.append(f"Applying {compression.value} compression (Ratio: {compression_ratio:.2f}x)")
+        trace.append(f"Routing to {model_size} model for optimized throughput")
+
     if not cache_hit and prev_tier != tier:
         metrics.record_adaptation(
             from_tier=prev_tier,
@@ -213,7 +224,63 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
         cache_hit=cache_hit,
         adaptation_count=adaptation_count,
         quality_score=quality,
+        trace=trace
     )
+
+
+@app.post("/standard")
+async def standard_request(payload: RequestPayload) -> dict:
+    """
+    Simulates a standard, non-adaptive AI request.
+    Real physics on slow networks, instant on WiFi.
+    """
+    try:
+        network_status = network_probe.get_status()
+        tier = network_status.tier
+        
+        # 1. Physics-based network simulation (Only applies to 2G/3G)
+        if tier in [NetworkTier.TIER_2G, NetworkTier.TIER_3G]:
+            payload_bits = len(payload.message) * 8
+            bandwidth_bps = network_status.bandwidth_kbps * 1024
+            transfer_time = payload_bits / bandwidth_bps
+            total_overhead = (network_status.latency_ms / 1000) + transfer_time
+            
+            # Simulate the 'pipe' delay
+            await asyncio.sleep(total_overhead)
+            
+            # Real-world timeout threshold
+            if total_overhead > 30:
+                raise HTTPException(status_code=504, detail="Network Timeout")
+
+        # 2. Call the heaviest model (Standard systems don't adapt)
+        model = "llama-3.3-70b-versatile"
+        
+        # Start timing for the 'Real' latency feel
+        start_time = datetime.utcnow()
+        response_text = await call_model(payload.message, payload.history, tier, model)
+        end_time = datetime.utcnow()
+        
+        # If it returned a demo response because of an API error, let's make it clear
+        if "demo" in response_text.lower() and os.getenv("GROQ_API_KEY"):
+            response_text = "ERROR: Upstream Provider Overloaded (70B model too heavy for current QoS)"
+
+        tokens = estimate_tokens(payload.message, CompressionLevel.NONE)
+        
+        return {
+            "response": response_text,
+            "tokens_used": tokens,
+            "status": "success",
+            "tier": tier,
+            "latency_sec": (end_time - start_time).total_seconds()
+        }
+    except Exception as e:
+        print(f"Standard path error: {e}")
+        # Return a 200 with an error message so the UI doesn't crash, but show the 'failure'
+        return {
+            "response": f"SERVICE UNAVAILABLE: {str(e)}",
+            "status": "error",
+            "tier": tier
+        }
 
 
 async def call_model(

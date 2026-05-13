@@ -56,3 +56,4 @@ class ResponsePayload(BaseModel):
     cache_hit: bool
     adaptation_count: int
     quality_score: float
+    trace: list[str] = Field(default_factory=list)

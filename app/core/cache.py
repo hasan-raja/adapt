@@ -5,6 +5,8 @@ Falls back to simple hash cache if embeddings unavailable.
 
 import hashlib
 import time
+import os
+import pickle
 from collections import OrderedDict
 from typing import Optional
 
@@ -21,14 +23,17 @@ from app.models import CompressionLevel
 
 # Cache configuration
 MAX_CACHE_SIZE = 1000
-DEFAULT_TTL_SECONDS = 3600  # 1 hour
+DEFAULT_TTL_SECONDS = 86400 * 7 # 7 days for persistent demo
 SIMILARITY_THRESHOLD = 0.92
+CACHE_DIR = ".cache"
+INDEX_PATH = os.path.join(CACHE_DIR, "faiss_index.bin")
+DATA_PATH = os.path.join(CACHE_DIR, "cache_data.pkl")
 
 
 class SemanticCache:
     """
     In-memory cache with high-performance FAISS similarity matching.
-    Falls back to hash-based cache if embeddings unavailable.
+    Falls back to disk-persistent store on restarts.
     """
 
     def __init__(self, ttl_seconds: int = DEFAULT_TTL_SECONDS):
@@ -48,11 +53,19 @@ class SemanticCache:
         if EMBEDDINGS_AVAILABLE:
             try:
                 self._embedder = SentenceTransformer('all-MiniLM-L6-v2')
-                # Inner product index for cosine similarity (requires normalized vectors)
-                self._index = faiss.IndexFlatIP(self._embedding_dim)
+                # Load or create index
+                if not os.path.exists(CACHE_DIR):
+                    os.makedirs(CACHE_DIR)
+                
+                if os.path.exists(INDEX_PATH) and os.path.exists(DATA_PATH):
+                    self._load_from_disk()
+                    print(f"Loaded {len(self._cache_values)} entries from persistent cache.")
+                else:
+                    # Inner product index for cosine similarity (requires normalized vectors)
+                    self._index = faiss.IndexFlatIP(self._embedding_dim)
             except Exception as e:
                 print(f"Warning: Could not initialize FAISS: {e}")
-                self._embedder = None
+                self._index = faiss.IndexFlatIP(self._embedding_dim)
 
     def _get_text_hash(self, text: str) -> str:
         return hashlib.sha256(text.lower().encode()).hexdigest()[:16]
