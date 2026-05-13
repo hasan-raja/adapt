@@ -8,15 +8,9 @@ import time
 import os
 import pickle
 from collections import OrderedDict
-from typing import Optional
+from typing import Optional, Any
 
-try:
-    from sentence_transformers import SentenceTransformer
-    import numpy as np
-    import faiss
-    EMBEDDINGS_AVAILABLE = True
-except ImportError:
-    EMBEDDINGS_AVAILABLE = False
+EMBEDDINGS_AVAILABLE = True # Assume available, check inside methods
 
 from app.models import CompressionLevel
 
@@ -48,36 +42,56 @@ class SemanticCache:
         self._keys_in_index = [] # maps index position to cache key
         self._embedding_dim = 384 # for all-MiniLM-L6-v2
 
-        # Initialize embedding model
+        # Model placeholder (Lazy Loading)
         self._embedder = None
+        
+        # Load index foundation even if model isn't ready
+        # Note: We avoid calling faiss here unless it's already on disk
         if EMBEDDINGS_AVAILABLE:
             try:
-                self._embedder = SentenceTransformer('all-MiniLM-L6-v2')
-                # Load or create index
                 if not os.path.exists(CACHE_DIR):
                     os.makedirs(CACHE_DIR)
                 
                 if os.path.exists(INDEX_PATH) and os.path.exists(DATA_PATH):
                     self._load_from_disk()
-                    print(f"Loaded {len(self._cache_values)} entries from persistent cache.")
                 else:
-                    # Inner product index for cosine similarity (requires normalized vectors)
-                    self._index = faiss.IndexFlatIP(self._embedding_dim)
+                    # Delay index creation until first use or model load
+                    pass
             except Exception as e:
-                print(f"Warning: Could not initialize FAISS: {e}")
-                self._index = faiss.IndexFlatIP(self._embedding_dim)
+                print(f"Warning during cache init: {e}")
+
+    def _ensure_model_loaded(self) -> None:
+        """Lazy load the embedding model and FAISS only when needed."""
+        global EMBEDDINGS_AVAILABLE
+        if self._embedder is None and EMBEDDINGS_AVAILABLE:
+            try:
+                from sentence_transformers import SentenceTransformer
+                import faiss
+                print("Loading semantic embedding model (First time only)...")
+                start = time.time()
+                self._embedder = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+                
+                if self._index is None:
+                    self._index = faiss.IndexFlatIP(self._embedding_dim)
+                
+                print(f"Model loaded in {time.time() - start:.2f} seconds.")
+            except ImportError:
+                print("Warning: ML libraries not installed. Semantic cache disabled.")
+                EMBEDDINGS_AVAILABLE = False
 
     def _get_text_hash(self, text: str) -> str:
         return hashlib.sha256(text.lower().encode()).hexdigest()[:16]
 
-    def _get_embedding(self, text: str) -> Optional[np.ndarray]:
+    def _get_embedding(self, text: str) -> Any:
+        self._ensure_model_loaded()
         if self._embedder is None:
             return None
         try:
+            import faiss
             embedding = self._embedder.encode(text, convert_to_numpy=True)
             # Normalize for cosine similarity via inner product
             faiss.normalize_L2(embedding.reshape(1, -1))
-            return embedding.reshape(1, -1)
+            return embedding.reshape(1, -1).astype('float32')
         except Exception:
             return None
 
@@ -92,6 +106,7 @@ class SemanticCache:
         if not EMBEDDINGS_AVAILABLE:
             return
         try:
+            import faiss
             # 1. Save FAISS index
             if self._index:
                 faiss.write_index(self._index, INDEX_PATH)
@@ -109,18 +124,20 @@ class SemanticCache:
     def _load_from_disk(self) -> None:
         """Load cache and index from disk."""
         try:
+            import faiss
             # 1. Load FAISS index
-            self._index = faiss.read_index(INDEX_PATH)
+            if os.path.exists(INDEX_PATH):
+                self._index = faiss.read_index(INDEX_PATH)
             
             # 2. Load metadata and keys
-            with open(DATA_PATH, 'rb') as f:
-                data = pickle.load(f)
-                self._cache_values = data['values']
-                self._cache_metadata = data['metadata']
-                self._keys_in_index = data['keys']
+            if os.path.exists(DATA_PATH):
+                with open(DATA_PATH, 'rb') as f:
+                    data = pickle.load(f)
+                    self._cache_values = data['values']
+                    self._cache_metadata = data['metadata']
+                    self._keys_in_index = data['keys']
         except Exception as e:
             print(f"Error loading cache from disk: {e}")
-            self._index = faiss.IndexFlatIP(self._embedding_dim)
 
     def get(self, text: str, compression: CompressionLevel) -> Optional[str]:
         """Get cached response using FAISS semantic search."""
@@ -137,7 +154,7 @@ class SemanticCache:
             query_emb = self._get_embedding(text_lower)
             if query_emb is not None:
                 # Search top 1
-                D, I = self._index.search(query_emb.astype('float32'), 1)
+                D, I = self._index.search(query_emb, 1)
                 
                 if I[0][0] != -1:
                     similarity = D[0][0]
@@ -160,7 +177,7 @@ class SemanticCache:
         embedding = self._get_embedding(text)
         
         if embedding is not None and self._index is not None:
-            self._index.add(embedding.astype('float32'))
+            self._index.add(embedding)
             self._keys_in_index.append(hash_key)
 
         self._cache_values[hash_key] = response
@@ -169,7 +186,7 @@ class SemanticCache:
             'original_text': text[:50]
         }
         
-        # Save to disk after each put for demo persistence
+        # Save to disk after each put
         self._save_to_disk()
 
     def get_stats(self) -> dict:
