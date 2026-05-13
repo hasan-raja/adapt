@@ -40,7 +40,7 @@ Network fluctuates between WiFi, 4G, and 2G.
 - **Hysteresis**: Prevents "network flapping" using rolling averages and stability thresholds.
 - **Model Tiers**:
   - **WiFi**: Llama 3.3 70B Versatile
-  - **4G**: Llama 3.1 70B Versatile
+  - **4G**: Mixtral 8x7B (32k)
   - **3G**: Llama 3.1 8B Instant
   - **2G**: Llama 3.1 8B Instant
 

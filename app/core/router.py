@@ -15,7 +15,7 @@ COST_PER_1K_TOKENS: dict[str, float] = {
     "7B": 3.00,
     "30B+": 8.00,
     "llama-3.3-70b-versatile": 0.15,
-    "llama-3.1-70b-versatile": 0.10,
+    "mixtral-8x7b-32768": 0.10,
     "llama-3.1-8b-instant": 0.02,
 }
 
@@ -74,7 +74,7 @@ def select_model_for_tier(tier: NetworkTier) -> tuple[str, CompressionLevel]:
         # Use Groq Specific Models
         configs = {
             NetworkTier.WIFI: ("llama-3.3-70b-versatile", CompressionLevel.NONE),
-            NetworkTier.TIER_4G: ("llama-3.1-70b-versatile", CompressionLevel.LIGHT),
+            NetworkTier.TIER_4G: ("mixtral-8x7b-32768", CompressionLevel.LIGHT),
             NetworkTier.TIER_3G: ("llama-3.1-8b-instant", CompressionLevel.MEDIUM),
             NetworkTier.TIER_2G: ("llama-3.1-8b-instant", CompressionLevel.AGGRESSIVE),
         }
