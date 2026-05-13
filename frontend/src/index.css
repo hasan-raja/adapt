@@ -1,62 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --adapt-bg: #0a0a0f;
-  --adapt-card: #13131a;
-  --adapt-border: #1f1f2e;
-  --adapt-2g: #ef4444;
-  --adapt-3g: #f97316;
-  --adapt-4g: #22c55e;
-  --adapt-wifi: #3b82f6;
+  --bg-primary: #050508;
+  --bg-secondary: #0d0d14;
+  --accent-blue: #3b82f6;
+  --accent-purple: #8b5cf6;
+  --accent-amber: #f59e0b;
+  --accent-emerald: #10b981;
+  --accent-rose: #f43f5e;
+  
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-hover: rgba(255, 255, 255, 0.06);
+  
+  --tier-wifi: #3b82f6;
+  --tier-4g: #10b981;
+  --tier-3g: #f59e0b;
+  --tier-2g: #f43f5e;
 }
 
 body {
-  background: var(--adapt-bg);
-  color: #fff;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  min-height: 100vh;
+  background-color: var(--bg-primary);
+  color: #f8fafc;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
 }
 
-.tier-indicator {
-  @apply px-3 py-1 rounded-full text-sm font-bold uppercase tracking-wider;
+h1, h2, h3, .font-display {
+  font-family: 'Outfit', sans-serif;
 }
 
-.tier-2g { background: var(--adapt-2g); color: #000; }
-.tier-3g { background: var(--adapt-3g); color: #000; }
-.tier-4g { background: var(--adapt-4g); color: #000; }
-.tier-wifi { background: var(--adapt-wifi); color: #fff; }
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-blue);
+}
 
-.card {
-  background: var(--adapt-card);
-  border: 1px solid var(--adapt-border);
-  @apply rounded-lg p-4;
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 1rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--glass-hover);
+  transform: translateY(-2px);
+}
+
+.tier-badge {
+  @apply px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border;
+}
+
+.tier-wifi { border-color: var(--tier-wifi); color: var(--tier-wifi); background: rgba(59, 130, 246, 0.1); }
+.tier-4g { border-color: var(--tier-4g); color: var(--tier-4g); background: rgba(16, 185, 129, 0.1); }
+.tier-3g { border-color: var(--tier-3g); color: var(--tier-3g); background: rgba(245, 158, 11, 0.1); }
+.tier-2g { border-color: var(--tier-2g); color: var(--tier-2g); background: rgba(244, 63, 94, 0.1); }
+
+.glow-blue { box-shadow: 0 0 20px rgba(59, 130, 246, 0.15); }
+.glow-emerald { box-shadow: 0 0 20px rgba(16, 185, 129, 0.15); }
+.glow-amber { box-shadow: 0 0 20px rgba(245, 158, 11, 0.15); }
+.glow-rose { box-shadow: 0 0 20px rgba(244, 63, 94, 0.15); }
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.metric-card {
+  @apply glass-card p-6 flex flex-col gap-1;
 }
 
 .metric-value {
-  @apply text-3xl font-bold;
+  @apply text-3xl font-bold tracking-tight text-white;
 }
 
 .metric-label {
-  @apply text-xs uppercase tracking-wider text-gray-500;
+  @apply text-xs font-medium text-slate-400 uppercase tracking-wider;
 }
 
-@keyframes pulse-live {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.network-progress {
+  @apply h-1.5 w-full bg-slate-800 rounded-full overflow-hidden;
 }
 
-.pulse-live {
-  animation: pulse-live 1s ease-in-out infinite;
+.network-progress-bar {
+  @apply h-full transition-all duration-700 ease-out;
 }
 
-.network-bar {
-  height: 8px;
-  @apply rounded-full transition-all duration-500;
+.btn-primary {
+  @apply px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold transition-all active:scale-95 disabled:opacity-50;
 }
 
-.network-bar.2g { background: var(--adapt-2g); }
-.network-bar.3g { background: var(--adapt-3g); }
-.network-bar.4g { background: var(--adapt-4g); }
-.network-bar.wifi { background: var(--adapt-wifi); }
+.btn-secondary {
+  @apply px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-semibold transition-all active:scale-95;
+}
+
+/* Hero Section Gradients */
+.hero-gradient {
+  background: radial-gradient(circle at 50% -20%, rgba(59, 130, 246, 0.15), transparent 70%);
+}

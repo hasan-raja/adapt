@@ -230,10 +230,11 @@ async def call_sarvam(message: str, history: list[dict], tier: NetworkTier, api_
     """Call Sarvam API for model inference."""
     import httpx
 
+    sarvam_url = os.getenv("SARVAM_API_URL", "https://api.sarvam.ai/inference")
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                "https://api.sarvam.ai/inference",
+                sarvam_url,
                 headers={"Authorization": f"Bearer {api_key}"},
                 json={
                     "text": message,
@@ -255,10 +256,11 @@ async def call_openai(message: str, history: list[dict], tier: NetworkTier, api_
 
     model = tier_to_openai_model(tier)
 
+    openai_url = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions")
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
+                openai_url,
                 headers={"Authorization": f"Bearer {api_key}"},
                 json={
                     "model": model,

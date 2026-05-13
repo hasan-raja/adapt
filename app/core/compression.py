@@ -10,18 +10,19 @@ from typing import Optional
 from app.models import CompressionLevel
 
 
-# Common Hindi/English filler words to remove
+# Common Hindi/English/Hinglish filler words to remove
 FILLERS_EN = {
     "actually", "basically", "literally", "honestly", "simply", "just",
     "you know", "i mean", "kind of", "sort of", "pretty much", "so basically",
-    "well basically", "like", "um", "uh", "er", "ah"
+    "well basically", "like", "um", "uh", "er", "ah", "basically", "essentially"
 }
 
 FILLERS_HI = {
-    "वास्तव में", "मूल रूप से", "सच में", "बस", "अभी", "तो",
+    "वास्तव में", "मूल रूप से", "सच में", "बस", "अभी", "तो", "मतलब", "यानी",
+    "basically", "vakai mein", "sach mein", "bilkul", "thoda", "shayad"
 }
 
-# Abbreviations for common phrases
+# Abbreviations for common phrases (English & Hinglish)
 ABBREVIATIONS: dict[str, str] = {
     "i want to": "→",
     "i need to": "→",
@@ -35,9 +36,21 @@ ABBREVIATIONS: dict[str, str] = {
     "not working": "broken",
     "how do i": "how to",
     "how can i": "how to",
-    "what is the": "what's the",
-    "what are the": "what're the",
+    "what is the": "what's",
+    "what are the": "what're",
+    "information": "info",
+    "application": "app",
+    "registration": "reg",
+    "verification": "verify",
+    "available": "avail",
+    "karna chahta hoon": "→",
+    "karna hai": "→",
+    "nahi chal raha": "broken",
+    "kaise karein": "how to",
+    "kya hai": "what is",
+    "batayein": "tell",
 }
+
 
 # Indic script patterns - these chars take 2x space in some encodings
 INDIC_RANGES = [
