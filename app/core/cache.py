@@ -87,6 +87,41 @@ class SemanticCache:
             return True
         return time.time() - meta['created_at'] > self._ttl
 
+    def _save_to_disk(self) -> None:
+        """Persist cache and index to disk."""
+        if not EMBEDDINGS_AVAILABLE:
+            return
+        try:
+            # 1. Save FAISS index
+            if self._index:
+                faiss.write_index(self._index, INDEX_PATH)
+            
+            # 2. Save metadata and keys
+            with open(DATA_PATH, 'wb') as f:
+                pickle.dump({
+                    'values': self._cache_values,
+                    'metadata': self._cache_metadata,
+                    'keys': self._keys_in_index
+                }, f)
+        except Exception as e:
+            print(f"Error saving cache to disk: {e}")
+
+    def _load_from_disk(self) -> None:
+        """Load cache and index from disk."""
+        try:
+            # 1. Load FAISS index
+            self._index = faiss.read_index(INDEX_PATH)
+            
+            # 2. Load metadata and keys
+            with open(DATA_PATH, 'rb') as f:
+                data = pickle.load(f)
+                self._cache_values = data['values']
+                self._cache_metadata = data['metadata']
+                self._keys_in_index = data['keys']
+        except Exception as e:
+            print(f"Error loading cache from disk: {e}")
+            self._index = faiss.IndexFlatIP(self._embedding_dim)
+
     def get(self, text: str, compression: CompressionLevel) -> Optional[str]:
         """Get cached response using FAISS semantic search."""
         text_lower = text.lower()
@@ -97,7 +132,7 @@ class SemanticCache:
             self._hits += 1
             return self._cache_values[hash_key]
 
-        # 2. Try semantic match (O(log N) or O(N) depending on index type)
+        # 2. Try semantic match
         if self._index and self._index.ntotal > 0:
             query_emb = self._get_embedding(text_lower)
             if query_emb is not None:
@@ -119,8 +154,6 @@ class SemanticCache:
         """Store response with embedding in FAISS index."""
         hash_key = self._get_text_hash(text)
         
-        # Evict if full (simple logic: clear everything and rebuild if it gets too complex, 
-        # but for this demo we'll just append)
         if len(self._cache_values) >= MAX_CACHE_SIZE:
             self.clear()
 
@@ -135,6 +168,9 @@ class SemanticCache:
             'created_at': time.time(),
             'original_text': text[:50]
         }
+        
+        # Save to disk after each put for demo persistence
+        self._save_to_disk()
 
     def get_stats(self) -> dict:
         total = self._hits + self._misses
@@ -144,7 +180,7 @@ class SemanticCache:
             "hit_rate": round(self._hits / total, 3) if total > 0 else 0.0,
             "entries": len(self._cache_values),
             "faiss_index_size": self._index.ntotal if self._index else 0,
-            "engine": "FAISS + MiniLM" if self._index else "Hash-only"
+            "engine": "FAISS (Persistent)" if self._index else "Hash-only"
         }
 
     def clear(self) -> None:
@@ -155,6 +191,10 @@ class SemanticCache:
             self._index.reset()
         self._hits = 0
         self._misses = 0
+        
+        # Clear disk files too
+        if os.path.exists(INDEX_PATH): os.remove(INDEX_PATH)
+        if os.path.exists(DATA_PATH): os.remove(DATA_PATH)
 
 
 
