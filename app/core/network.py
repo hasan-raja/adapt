@@ -112,6 +112,25 @@ class NetworkProbe:
 
         return self._current_tier
 
+    async def probe_remote(self, url: str, timeout_seconds: float = 5.0) -> NetworkTier:
+        """
+        Measure server-side latency and rough downstream throughput against a small URL.
+        This is a fallback for demos; client-observed browser hints are usually closer
+        to the user's actual network.
+        """
+        import httpx
+
+        start = time.perf_counter()
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            elapsed = max(time.perf_counter() - start, 0.001)
+
+        payload_kbits = (len(response.content) * 8) / 1000
+        bandwidth_kbps = payload_kbits / elapsed
+        latency_ms = elapsed * 1000
+        return await self.update_reading(bandwidth_kbps, latency_ms)
+
     def get_status(self, force_tier: Optional[NetworkTier] = None) -> NetworkStatus:
         """Get current network status."""
         from app.core.router import select_model_for_tier

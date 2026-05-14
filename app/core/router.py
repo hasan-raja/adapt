@@ -88,6 +88,34 @@ def select_model_for_tier(tier: NetworkTier) -> tuple[str, CompressionLevel]:
     return configs.get(tier, ("7B", CompressionLevel.LIGHT))
 
 
+def classify_task(prompt: str) -> str:
+    """Small local task classifier for routing policy decisions."""
+    text = prompt.lower()
+    if any(term in text for term in ["doctor", "medicine", "symptom", "fever", "bleeding", "pain", "hospital"]):
+        return "health"
+    if any(term in text for term in ["bank", "upi", "loan", "tax", "aadhaar", "pan", "password", "otp", "pin"]):
+        return "sensitive"
+    if any(term in text for term in ["code", "bug", "error", "stack trace", "api", "function"]):
+        return "coding"
+    if any(term in text for term in ["summarize", "summary", "shorten", "compress"]):
+        return "summarization"
+    return "general"
+
+
+def select_model_for_request(tier: NetworkTier, prompt: str) -> tuple[str, CompressionLevel, str]:
+    """
+    Select model and compression with a small task-aware policy layer.
+    High-stakes prompts keep more context even on poor networks.
+    """
+    model, compression = select_model_for_tier(tier)
+    task = classify_task(prompt)
+
+    if task in {"health", "sensitive", "coding"} and compression == CompressionLevel.AGGRESSIVE:
+        compression = CompressionLevel.MEDIUM
+
+    return model, compression, task
+
+
 def calculate_quality_score(
     original_response: str,
     compressed_response: str,

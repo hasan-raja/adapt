@@ -45,11 +45,20 @@ class RequestPayload(BaseModel):
     message: str
     history: list[dict] = Field(default_factory=list)
     force_tier: Optional[NetworkTier] = None
+    observed_bandwidth_kbps: Optional[float] = Field(
+        default=None,
+        description="Client-observed downstream bandwidth estimate, when available.",
+    )
+    observed_latency_ms: Optional[float] = Field(
+        default=None,
+        description="Client-observed round-trip latency estimate, when available.",
+    )
 
 
 class ResponsePayload(BaseModel):
     response: str
     tier_used: NetworkTier
+    compression_level: CompressionLevel
     compression_ratio: float
     tokens_used: int
     cost_rs: float

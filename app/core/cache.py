@@ -7,7 +7,6 @@ import hashlib
 import time
 import os
 import pickle
-from collections import OrderedDict
 from typing import Optional, Any
 
 EMBEDDINGS_AVAILABLE = True # Assume available, check inside methods
@@ -22,6 +21,12 @@ SIMILARITY_THRESHOLD = 0.92
 CACHE_DIR = ".cache"
 INDEX_PATH = os.path.join(CACHE_DIR, "faiss_index.bin")
 DATA_PATH = os.path.join(CACHE_DIR, "cache_data.pkl")
+
+SAFETY_SENSITIVE_TERMS = {
+    "doctor", "hospital", "medicine", "dosage", "dose", "pregnant", "bleeding",
+    "chest pain", "suicide", "self harm", "loan", "credit", "password", "otp",
+    "pin", "account number", "aadhaar", "pan card", "bank", "upi", "tax",
+}
 
 
 class SemanticCache:
@@ -81,6 +86,11 @@ class SemanticCache:
 
     def _get_text_hash(self, text: str) -> str:
         return hashlib.sha256(text.lower().encode()).hexdigest()[:16]
+
+    def should_cache(self, text: str) -> bool:
+        """Avoid reusing answers for highly personal, medical, or financial prompts."""
+        lowered = text.lower()
+        return not any(term in lowered for term in SAFETY_SENSITIVE_TERMS)
 
     def _get_embedding(self, text: str) -> Any:
         self._ensure_model_loaded()
@@ -142,6 +152,11 @@ class SemanticCache:
     def get(self, text: str, compression: CompressionLevel) -> Optional[str]:
         """Get cached response using FAISS semantic search."""
         text_lower = text.lower()
+
+        if not self.should_cache(text_lower):
+            self._misses += 1
+            return None
+
         hash_key = self._get_text_hash(text_lower)
 
         # 1. Try exact match first (O(1))
@@ -169,6 +184,9 @@ class SemanticCache:
 
     def put(self, text: str, response: str) -> None:
         """Store response with embedding in FAISS index."""
+        if not self.should_cache(text):
+            return
+
         hash_key = self._get_text_hash(text)
         
         if len(self._cache_values) >= MAX_CACHE_SIZE:

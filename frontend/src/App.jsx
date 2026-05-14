@@ -196,42 +196,61 @@ function App() {
     }
   }
 
+  const getNetworkHints = () => {
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection
+    if (!connection) return {}
+
+    const hints = {}
+    if (connection.downlink) hints.observed_bandwidth_kbps = connection.downlink * 1000
+    if (connection.rtt) hints.observed_latency_ms = connection.rtt
+    return hints
+  }
+
   // Run demo simulation
   const runDemo = async () => {
     setConversations([])
     for (const conv of DEMO_SCENARIOS) {
       await changeTier(conv.tier)
       await new Promise(resolve => setTimeout(resolve, 800))
-      setConversations(prev => [conv, ...prev])
+      await sendMessage({ message: conv.message, forceTier: conv.tier, skipComparison: true })
     }
   }
 
   // Send message
-  const sendMessage = async () => {
-    if (!message.trim()) return
+  const sendMessage = async (options = {}) => {
+    const outgoingMessage = options.message ?? message
+    const shouldCompare = comparisonMode && !options.skipComparison
+
+    if (!outgoingMessage.trim()) return
     setLoading(true)
     setResponse('')
     
-    if (comparisonMode) {
+    if (shouldCompare) {
       setStandardLoading(true)
       setStandardResponse('')
     }
 
     try {
+      const payload = {
+        message: outgoingMessage,
+        ...getNetworkHints(),
+      }
+      if (options.forceTier) payload.force_tier = options.forceTier
+
       // 1. Send Adaptive Request
       const adaptPromise = fetch('/api/adapt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(payload),
       }).then(res => res.json())
 
       // 2. Send Standard Request (if mode active)
       let standardPromise = null
-      if (comparisonMode) {
+      if (shouldCompare) {
         standardPromise = fetch('/api/standard', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify(payload),
         }).then(async res => {
           if (!res.ok) throw new Error('Standard request timed out/failed')
           return res.json()
@@ -245,9 +264,9 @@ function App() {
       const newConv = {
         id: Date.now(),
         tier: adaptData.tier_used,
-        message: message,
+        message: outgoingMessage,
         response: adaptData.response,
-        compression: networkStatus.compression_level,
+        compression: adaptData.compression_level,
         tokens: adaptData.tokens_used,
         cost: adaptData.cost_rs,
         cache: adaptData.cache_hit,
@@ -255,7 +274,7 @@ function App() {
       }
       setConversations(prev => [newConv, ...prev])
 
-      if (comparisonMode && standardPromise) {
+      if (shouldCompare && standardPromise) {
         try {
           const standardData = await standardPromise
           setStandardResponse(standardData.response)
@@ -265,7 +284,7 @@ function App() {
         setStandardLoading(false)
       }
 
-      setMessage('')
+      if (!options.message) setMessage('')
     } catch (e) {
       setResponse('Error: Could not connect to ADAPT server')
     }
@@ -534,7 +553,7 @@ function App() {
                   className="flex-1 bg-slate-900 border border-glass-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors"
                 />
                 <button 
-                  onClick={sendMessage}
+                  onClick={() => sendMessage()}
                   disabled={loading}
                   className="btn-primary"
                 >

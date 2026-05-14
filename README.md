@@ -8,6 +8,10 @@ ADAPT is a next-generation infrastructure layer designed for the "Next Billion U
 
 When the network drops, ADAPT doesn't give up. It summarizes, compresses, routes to smaller models, and leverages high-performance semantic caching to maintain continuity.
 
+## Prototype Status
+
+This repo is a fellowship/demo prototype, not a production gateway yet. The adaptive request path is real, the dashboard demo now calls the backend live, and browser/server network readings can feed the tier selector. Manual tier switching and no-key model responses remain demo controls. See [EVALUATION.md](./EVALUATION.md) for the exact boundary between implemented behavior, simulation, and next benchmarks.
+
 ## 🚀 "Holy Shit" Demo
 
 **Scenario: User on a moving train in rural India.**
@@ -99,5 +103,4 @@ npm run dev
 ADAPT is built on the belief that access to intelligence should be a right, not a luxury dependent on your proximity to a cell tower.
 
 ---
-**Submission for Sarvam AI / Activate Fellowship**
 Built with ❤️ for the Next Billion Users.

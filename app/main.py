@@ -4,6 +4,7 @@ FastAPI application with compression, caching, and network-aware routing.
 """
 
 import asyncio
+import hashlib
 import os
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -24,7 +25,7 @@ from app.models import (
 )
 from app.core.compression import compress_message, compress_conversation_history, calculate_compression_ratio
 from app.core.network import network_probe, network_simulator, TIER_CONFIG, NetworkStatus
-from app.core.router import select_model_for_tier, estimate_tokens, calculate_cost
+from app.core.router import select_model_for_tier, select_model_for_request, estimate_tokens, calculate_cost
 from app.core.cache import semantic_cache
 from app.core.metrics import metrics
 
@@ -108,6 +109,21 @@ async def get_network_status(force_tier: NetworkTier = None) -> NetworkStatus:
     return status
 
 
+@app.post("/network/probe")
+async def probe_network(url: str = "https://www.cloudflare.com/cdn-cgi/trace") -> NetworkStatus:
+    """
+    Run a server-side network probe and fold the reading into hysteresis.
+    Browser-provided hints are preferred for end-user QoS, but this gives the
+    demo a real measurement path instead of simulation only.
+    """
+    try:
+        await network_probe.probe_remote(url)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Network probe failed: {e}")
+
+    return network_probe.get_status()
+
+
 @app.post("/network/simulate")
 async def start_simulation(sequence: list[dict]):
     """
@@ -138,25 +154,43 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
     Main adaptation endpoint.
     Compresses prompt, checks cache, routes to appropriate model.
     """
-    # Get network status
-    network_status = network_probe.get_status(force_tier=payload.force_tier)
+    # Get network status. Prefer explicit demo tier, then real client network hints.
+    if payload.force_tier:
+        network_status = network_probe.get_status(force_tier=payload.force_tier)
+    elif payload.observed_bandwidth_kbps and payload.observed_latency_ms:
+        await network_probe.update_reading(
+            payload.observed_bandwidth_kbps,
+            payload.observed_latency_ms,
+        )
+        network_status = network_probe.get_status()
+    else:
+        network_status = network_probe.get_status()
+
     tier = network_status.tier
-    compression = network_status.compression_level
+    model_size, compression, task_type = select_model_for_request(tier, payload.message)
 
     # Record previous tier for adaptation event
     prev_tier = None
     for event in metrics.get_recent_events(1):
         prev_tier = NetworkTier(event["to_tier"]) if event.get("to_tier") else None
 
-    # Compress message
+    # Compress current message and conversation history before the model call.
     compressed_message = compress_message(payload.message, compression)
+    compressed_history = compress_conversation_history(
+        payload.history,
+        max_turns=6,
+        compression=compression,
+    )
 
     # Estimate tokens
     original_tokens = estimate_tokens(payload.message, CompressionLevel.NONE)
     compressed_tokens = estimate_tokens(compressed_message, compression)
 
-    # Check cache
-    cache_key = compressed_message + str(tier)
+    # Check cache. Include tier/compression/history fingerprint to avoid cross-context reuse.
+    history_fingerprint = hashlib.sha256(
+        repr(compressed_history[-3:]).encode()
+    ).hexdigest()[:12]
+    cache_key = f"{tier.value}:{compression.value}:{history_fingerprint}:{compressed_message}"
     cached_response = semantic_cache.get(cache_key, compression)
     cache_hit = cached_response is not None
 
@@ -164,16 +198,13 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
     if cache_hit:
         response_text = cached_response
     else:
-        # Select model based on tier
-        model_size, _ = select_model_for_tier(tier)
-
         # Simulate API call with tier-appropriate response
         await asyncio.sleep(network_status.latency_ms / 1000)  # Simulate latency
 
         # Use API or demo response
         response_text = await call_model(
             compressed_message,
-            payload.history,
+            compressed_history,
             tier,
             model_size,
         )
@@ -201,7 +232,9 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
         trace.append("Semantic match found (Score: 0.94+) - Bypassing LLM")
     else:
         trace.append(f"Applying {compression.value} compression (Ratio: {compression_ratio:.2f}x)")
-        trace.append(f"Routing to {model_size} model for optimized throughput")
+        if compressed_history != payload.history:
+            trace.append(f"Compressed history from {len(payload.history)} to {len(compressed_history)} turns")
+        trace.append(f"Routing {task_type} task to {model_size} model for optimized throughput")
 
     if not cache_hit and prev_tier != tier:
         metrics.record_adaptation(
@@ -218,6 +251,7 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
     return ResponsePayload(
         response=response_text,
         tier_used=tier,
+        compression_level=compression,
         compression_ratio=compression_ratio,
         tokens_used=compressed_tokens,
         cost_rs=cost,
