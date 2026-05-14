@@ -45,7 +45,7 @@ const NetworkControl = ({ networkStatus, changeTier, runActiveProbe, probeStatus
         <div className="space-y-1.5">
           <div className="flex justify-between text-[10px] uppercase tracking-widest text-slate-500 font-bold">
             <span>Bandwidth</span>
-            <span className="text-slate-300">{networkStatus.bandwidth_kbps.toLocaleString()} kbps</span>
+            <span className="text-slate-300">{networkStatus?.bandwidth_kbps?.toLocaleString() || 0} kbps</span>
           </div>
           <div className="network-progress">
             <div 
@@ -58,7 +58,7 @@ const NetworkControl = ({ networkStatus, changeTier, runActiveProbe, probeStatus
         <div className="space-y-1.5">
           <div className="flex justify-between text-[10px] uppercase tracking-widest text-slate-500 font-bold">
             <span>Latency</span>
-            <span className="text-slate-300">{networkStatus.latency_ms} ms</span>
+            <span className="text-slate-300">{networkStatus?.latency_ms || 0} ms</span>
           </div>
           <div className="network-progress">
             <div 

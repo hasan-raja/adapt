@@ -79,7 +79,7 @@ export const useAppLogic = () => {
   const changeTier = async (tier) => {
     setCurrentTier(tier);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/network/status?force_tier=` + tier);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/network/status?force_tier=${tier}`);
       const data = await res.json();
       setNetworkStatus(data);
     } catch (e) {
@@ -160,7 +160,7 @@ export const useAppLogic = () => {
 
       let standardPromise = null;
       if (shouldCompare) {
-        standardPromise = fetch('/standard', {
+        standardPromise = fetch(`${import.meta.env.VITE_API_URL}/standard`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
