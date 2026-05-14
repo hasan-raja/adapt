@@ -23,7 +23,16 @@ jobs:
 
           git clone https://hasan-raja:$HF_TOKEN@huggingface.co/spaces/hasan-raja/adapt hf-space
 
-          cp -r * hf-space/ || true
+          rsync -av \
+            --exclude='hf-space' \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='frontend' \
+            --exclude='tests' \
+            --exclude='node_modules' \
+            --exclude='venv' \
+            --exclude='__pycache__' \
+            ./ hf-space/
 
           cd hf-space
 
