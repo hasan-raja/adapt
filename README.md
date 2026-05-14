@@ -1,3 +1,12 @@
+---
+title: Adapt Backend
+emoji: 🚀
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
 # ADAPT - Adaptive AI QoS Infrastructure
 
 > AI should degrade gracefully, not catastrophically.
