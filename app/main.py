@@ -105,6 +105,12 @@ async def root():
     }
 
 
+@app.get("/health")
+async def health():
+    """Hugging Face Spaces health check endpoint."""
+    return {"status": "ok"}
+
+
 @app.get("/network/status")
 async def get_network_status(force_tier: NetworkTier = None) -> NetworkStatus:
     """Get current network status and optionally force a tier."""
@@ -503,4 +509,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=7860)
