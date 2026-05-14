@@ -93,6 +93,18 @@ If no Groq key is configured, ADAPT stays runnable in demo mode.
 
 Use [eval_prompts.json](./eval_prompts.json) for Hinglish, public-service, agriculture, health, education, and financial-safety prompts.
 
+Run the live eval set after starting the backend:
+
+```bash
+python scripts/run_eval.py
+```
+
+Save a JSON artifact:
+
+```bash
+python scripts/run_eval.py --output eval_results.json
+```
+
 Core tests:
 
 ```bash
