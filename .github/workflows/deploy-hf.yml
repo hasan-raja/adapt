@@ -1,0 +1,34 @@
+name: Deploy to Hugging Face
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Push to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+        run: |
+          git config --global user.email "hasanraja2199@gmail.com"
+          git config --global user.name "hasan-raja"
+
+          git clone https://hasan-raja:$HF_TOKEN@huggingface.co/spaces/hasan-raja/adapt hf-space
+
+          cp -r * hf-space/ || true
+
+          cd hf-space
+
+          git add .
+
+          git commit -m "Deploy from GitHub Actions" || echo "No changes"
+
+          git push
