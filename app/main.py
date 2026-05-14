@@ -10,8 +10,9 @@ from typing import Optional
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 load_dotenv()
 from groq import AsyncGroq
@@ -54,6 +55,10 @@ DEMO_RESPONSES: dict[str, list[str]] = {
 # Global client instances for connection pooling
 _groq_client: Optional[AsyncGroq] = None
 
+# Lightweight in-memory session store for demo continuity across model switches.
+SESSION_HISTORY: dict[str, list[dict]] = {}
+MAX_SESSION_TURNS = 12
+
 
 def get_groq_client(api_key: str) -> AsyncGroq:
     """Get or create singleton Groq client."""
@@ -67,7 +72,8 @@ def get_groq_client(api_key: str) -> AsyncGroq:
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     print("ADAPT starting up...")
-    print(f"Embeddings available: {semantic_cache._embedder is not None}")
+    asyncio.create_task(asyncio.to_thread(semantic_cache.warmup))
+    print("Semantic cache warming in background...")
     yield
     print("ADAPT shutting down...")
 
@@ -107,6 +113,26 @@ async def get_network_status(force_tier: NetworkTier = None) -> NetworkStatus:
     
     status = network_probe.get_status()
     return status
+
+
+@app.get("/network/ping")
+async def network_ping():
+    """Tiny endpoint used by the browser to estimate round-trip time."""
+    return {"ok": True, "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/network/probe-payload")
+async def network_probe_payload(size_kb: int = 128):
+    """Return a deterministic payload so the browser can estimate download speed."""
+    size_kb = max(16, min(size_kb, 512))
+    body = ("adapt-probe\n" * 80).encode()
+    repeats = max(1, (size_kb * 1024) // len(body))
+    payload = body * repeats
+    return Response(
+        content=payload[: size_kb * 1024],
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/network/probe")
@@ -174,10 +200,14 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
     for event in metrics.get_recent_events(1):
         prev_tier = NetworkTier(event["to_tier"]) if event.get("to_tier") else None
 
+    request_history = payload.history
+    if payload.session_id:
+        request_history = SESSION_HISTORY.get(payload.session_id, payload.history)
+
     # Compress current message and conversation history before the model call.
     compressed_message = compress_message(payload.message, compression)
     compressed_history = compress_conversation_history(
-        payload.history,
+        request_history,
         max_turns=6,
         compression=compression,
     )
@@ -191,6 +221,7 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
         repr(compressed_history[-3:]).encode()
     ).hexdigest()[:12]
     cache_key = f"{tier.value}:{compression.value}:{history_fingerprint}:{compressed_message}"
+    cache_skipped_reason = semantic_cache.cache_skip_reason(cache_key)
     cached_response = semantic_cache.get(cache_key, compression)
     cache_hit = cached_response is not None
 
@@ -213,7 +244,7 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
         semantic_cache.put(cache_key, response_text)
 
     # Calculate metrics
-    cost = calculate_cost(compressed_tokens, tier.value)
+    cost = calculate_cost(compressed_tokens, model_size)
     compression_ratio = calculate_compression_ratio(payload.message, compressed_message)
 
     # Get quality score
@@ -232,8 +263,10 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
         trace.append("Semantic match found (Score: 0.94+) - Bypassing LLM")
     else:
         trace.append(f"Applying {compression.value} compression (Ratio: {compression_ratio:.2f}x)")
-        if compressed_history != payload.history:
-            trace.append(f"Compressed history from {len(payload.history)} to {len(compressed_history)} turns")
+        if compressed_history != request_history:
+            trace.append(f"Compressed history from {len(request_history)} to {len(compressed_history)} turns")
+        if cache_skipped_reason:
+            trace.append(f"Cache skipped for safety ({cache_skipped_reason})")
         trace.append(f"Routing {task_type} task to {model_size} model for optimized throughput")
 
     if not cache_hit and prev_tier != tier:
@@ -248,18 +281,49 @@ async def adapt_request(payload: RequestPayload) -> ResponsePayload:
 
     adaptation_count = len(metrics.get_recent_events(20))
 
+    if payload.session_id:
+        updated_history = [
+            *request_history,
+            {"role": "user", "content": payload.message},
+            {"role": "assistant", "content": response_text},
+        ][-MAX_SESSION_TURNS:]
+        SESSION_HISTORY[payload.session_id] = updated_history
+
     return ResponsePayload(
         response=response_text,
         tier_used=tier,
         compression_level=compression,
+        model_used=model_size,
+        task_type=task_type,
         compression_ratio=compression_ratio,
         tokens_used=compressed_tokens,
         cost_rs=cost,
         cache_hit=cache_hit,
+        cache_skipped_reason=cache_skipped_reason,
         adaptation_count=adaptation_count,
         quality_score=quality,
         trace=trace
     )
+
+
+@app.post("/adapt/stream")
+async def adapt_stream(payload: RequestPayload):
+    """
+    Streaming demo endpoint.
+    The prototype still adapts before generation, but delivers the answer as SSE
+    so the next architecture can support mid-stream QoS heartbeats.
+    """
+    result = await adapt_request(payload)
+
+    async def event_stream():
+        yield f"event: meta\ndata: {result.model_dump_json()}\n\n"
+        words = result.response.split()
+        for word in words:
+            yield f"data: {word} \n\n"
+            await asyncio.sleep(0.025)
+        yield "event: done\ndata: {}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.post("/standard")
@@ -332,17 +396,7 @@ async def call_model(
     if groq_key:
         return await call_groq(message, history, tier, groq_key, model_size)
 
-    # Fallback to Sarvam
-    sarvam_key = os.getenv("SARVAM_API_KEY")
-    if sarvam_key:
-        return await call_sarvam(message, history, tier, sarvam_key)
-
-    # Fallback to OpenAI
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key:
-        return await call_openai(message, history, tier, openai_key)
-
-    # No API key - use demo response
+    # No Groq key - use transparent demo response.
     demo_responses = DEMO_RESPONSES.get(tier, DEMO_RESPONSES[NetworkTier.TIER_4G])
     return demo_responses[0]
 
@@ -365,76 +419,6 @@ async def call_groq(message: str, history: list[dict], tier: NetworkTier, api_ke
     except Exception as e:
         print(f"Groq API error: {e}")
         return get_demo_response(tier)
-
-
-async def call_sarvam(message: str, history: list[dict], tier: NetworkTier, api_key: str) -> str:
-    """Call Sarvam API for model inference."""
-    import httpx
-
-    sarvam_url = os.getenv("SARVAM_API_URL", "https://api.sarvam.ai/inference")
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                sarvam_url,
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "text": message,
-                    "model": f"sarvam-m-{model_size_to_sarvam(tier)}",
-                },
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("text", "Response received")
-        except Exception as e:
-            print(f"Sarvam API error: {e}")
-            return get_demo_response(tier)
-
-
-async def call_openai(message: str, history: list[dict], tier: NetworkTier, api_key: str) -> str:
-    """Call OpenAI API as fallback."""
-    import httpx
-
-    model = tier_to_openai_model(tier)
-
-    openai_url = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions")
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                openai_url,
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": message}],
-                },
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-        except Exception as e:
-            print(f"OpenAI API error: {e}")
-            return get_demo_response(tier)
-
-
-def model_size_to_sarvam(tier: NetworkTier) -> str:
-    """Map tier to Sarvam model name."""
-    return {
-        NetworkTier.TIER_2G: "1b",
-        NetworkTier.TIER_3G: "3b",
-        NetworkTier.TIER_4G: "7b",
-        NetworkTier.WIFI: "30b",
-    }.get(tier, "7b")
-
-
-def tier_to_openai_model(tier: NetworkTier) -> str:
-    """Map tier to OpenAI model name."""
-    return {
-        NetworkTier.TIER_2G: "gpt-3.5-turbo",
-        NetworkTier.TIER_3G: "gpt-3.5-turbo",
-        NetworkTier.TIER_4G: "gpt-4",
-        NetworkTier.WIFI: "gpt-4-turbo-preview",
-    }.get(tier, "gpt-3.5-turbo")
 
 
 def get_demo_response(tier: NetworkTier) -> str:

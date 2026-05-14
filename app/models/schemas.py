@@ -42,6 +42,10 @@ class NetworkStatus(BaseModel):
 
 
 class RequestPayload(BaseModel):
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Conversation session id used for server-side continuity.",
+    )
     message: str
     history: list[dict] = Field(default_factory=list)
     force_tier: Optional[NetworkTier] = None
@@ -59,10 +63,13 @@ class ResponsePayload(BaseModel):
     response: str
     tier_used: NetworkTier
     compression_level: CompressionLevel
+    model_used: str
+    task_type: str
     compression_ratio: float
     tokens_used: int
     cost_rs: float
     cache_hit: bool
+    cache_skipped_reason: Optional[str] = None
     adaptation_count: int
     quality_score: float
     trace: list[str] = Field(default_factory=list)

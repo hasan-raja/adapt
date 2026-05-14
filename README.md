@@ -1,84 +1,53 @@
-# ADAPT — Adaptive AI QoS Infrastructure
+# ADAPT - Adaptive AI QoS Infrastructure
 
-## The Pitch
+> AI should degrade gracefully, not catastrophically.
 
-> "AI should degrade gracefully, not catastrophically."
+ADAPT is an AI QoS gateway for low-connectivity users. It keeps LLM apps usable when network quality drops by measuring client conditions, compressing context, routing to an appropriate model tier, and serving safe semantic-cache hits for repeated general questions.
 
-ADAPT is a next-generation infrastructure layer designed for the "Next Billion Users." While Silicon Valley builds for fiber and 5G, ADAPT makes AI survive—and thrive—on 2G networks, ₹5,000 phones, and ₹5-per-1K-token budgets. 
+Built as a fellowship prototype for India-first AI infrastructure.
 
-When the network drops, ADAPT doesn't give up. It summarizes, compresses, routes to smaller models, and leverages high-performance semantic caching to maintain continuity.
+## Why this exists
 
-## Prototype Status
+Most AI apps assume stable connectivity, modern phones, and enough budget to call a large model every time. That is not always true for rural, mobile-first, or cost-sensitive users. ADAPT explores a different default: the answer may become shorter under bad network conditions, but the app should not simply fail.
 
-This repo is a fellowship/demo prototype, not a production gateway yet. The adaptive request path is real, the dashboard demo now calls the backend live, and browser/server network readings can feed the tier selector. Manual tier switching and no-key model responses remain demo controls. See [EVALUATION.md](./EVALUATION.md) for the exact boundary between implemented behavior, simulation, and next benchmarks.
-
-## 🚀 "Holy Shit" Demo
-
-**Scenario: User on a moving train in rural India.**
-Network fluctuates between WiFi, 4G, and 2G.
-
-| Event | Network | Action | Tokens | Cost | Latency |
-|-------|---------|--------|--------|------|---------|
-| 1. Query | WiFi    | Full Model (30B+) | 2,400 | ₹12.00 | 4.2s |
-| 2. Query | 4G      | Light Compression (7B) | 1,850 | ₹5.55 | 2.1s |
-| 3. Query | 2G      | **Survival Mode (1B)** | 890 | ₹0.45 | 1.8s |
-| 4. Repeat| 2G      | **Semantic Cache Hit** | 52 | ₹0.00 | 0.3s |
-
-**Outcome**: The user stays engaged. The conversation never crashes. The cost drops by 90% when conditions worsen.
-
-## ✨ Key Features
-
-### 1. 📦 Multi-Layer Compression Pipeline
-- **Layer 1 (Semantic)**: Summarizes conversation history beyond 5 turns.
-- **Layer 2 (Token-level)**: Aggressive abbreviation (e.g., "Registration" → "Reg") and filler removal.
-- **Layer 3 (Context Pruning)**: Prunes non-essential context while maintaining core intent.
-- **Multilingual**: Optimized for Indic scripts (2 chars/token) and Hinglish/code-mixed input.
-
-### 2. ⚡ High-Performance Semantic Caching
-- **Engine**: FAISS (Facebook AI Similarity Search) + MiniLM-L6-v2 embeddings.
-- **Threshold**: 0.92 cosine similarity for high-precision matches.
-- **Performance**: 0 tokens, 0 cost, and sub-100ms response for repetitive or "near-duplicate" queries.
-
-### 3. 📡 Intelligent Hysteresis Routing
-- **Network-Aware**: Real-time QoS probing (bandwidth & latency).
-- **Hysteresis**: Prevents "network flapping" using rolling averages and stability thresholds.
-- **Model Tiers**:
-  - **WiFi**: Llama 3.3 70B Versatile
-  - **4G**: Mixtral 8x7B (32k)
-  - **3G**: Llama 3.1 8B Instant
-  - **2G**: Llama 3.1 8B Instant
-
-### 4. 📊 Live Adaptation Dashboard
-- **Premium UI**: Glassmorphism aesthetic with real-time WebSocket updates.
-- **Metrics**: Cost tracking in ₹, token reduction ratios, and adaptation event logs.
-- **Network Simulator**: Test how the system reacts to signal drops with a single click.
-
-## 🛠️ Technical Architecture
+## Architecture
 
 ```mermaid
-graph LR
-    A[Client] --> B[Network Probe]
-    B --> C[ADAPT Proxy]
-    C --> D[Compression Pipeline]
-    D --> E[Semantic Cache FAISS]
-    E -- Miss --> F[Intelligent Router]
-    E -- Hit --> G[Fast Response]
-    F --> H[Model API Sarvam/OpenAI]
-    H --> I[Dashboard Metrics]
+flowchart LR
+    A["Browser active probe"] --> B["ADAPT FastAPI gateway"]
+    B --> C["Task-aware compression"]
+    C --> D["Safe semantic cache"]
+    D -->|hit| H["Response"]
+    D -->|miss| E["Network-aware router"]
+    E --> F["Groq model or demo mode"]
+    F --> H
+    B --> G["WebSocket metrics"]
+    G --> I["React dashboard"]
 ```
 
-## 🏗️ Technical Deep Dive
+## What is implemented
 
-### Why FAISS?
-Traditional key-value caches fail in AI because users never ask the same question exactly the same way. ADAPT uses FAISS to find *semantically* similar questions in vector space. This is critical for 2G users where every bit counts.
+- Active browser probe endpoints: `/network/ping` and `/network/probe-payload`.
+- Network tier selection from active probe hints, browser hints, or manual demo controls.
+- Hysteresis tier stabilization to avoid network flapping.
+- Request-boundary model routing by network tier and task type.
+- Conversation history compression before model calls.
+- Session memory using `session_id`, so continuity survives model switches.
+- FAISS + MiniLM semantic cache with exact-match fallback.
+- Safety policy that skips semantic cache reuse for health, finance, identity, OTP, PIN, and credential prompts.
+- SSE foundation endpoint at `/adapt/stream`.
+- Live React dashboard with network controls, active probe, trace output, cache stats, and cost/token metrics.
 
-### Multilingual Continuity
-ADAPT detects Indic script density. Since Indic characters can be token-heavy, we apply specialized compression to Hindi/Tamil content, reducing the "token-tax" for Indian users.
+## What is still prototype/demo
 
-### Hysteresis Routing
-Switching models too frequently (flapping) destroys user experience. ADAPT requires 3 consistent network readings before triggering a model tier change, ensuring a stable "quality of service."
+- Manual 2G/3G/4G/WiFi buttons are demo controls, not real packet throttling.
+- Mid-response network switching is not fully implemented yet. ADAPT currently adapts before each request.
+- If `GROQ_API_KEY` is absent, responses use transparent demo text.
+- Benchmark numbers in the dashboard are estimates until rerun against the eval set.
 
-## 🛠️ Installation & Setup
+See [EVALUATION.md](./EVALUATION.md) and [benchmarks/results.md](./benchmarks/results.md) for the exact claim boundary.
+
+## Quick Start
 
 ```bash
 # Clone and enter
@@ -90,17 +59,46 @@ python -m venv .venv
 source .venv/bin/activate # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+```
 
-# Frontend Setup
+In another terminal:
+
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## 📜 Philosophy
-> "Build for the 500M Indians on 2G, not just the 50M on fiber."
+Open the dashboard at `http://localhost:3000`.
 
-ADAPT is built on the belief that access to intelligence should be a right, not a luxury dependent on your proximity to a cell tower.
+## Environment Variables
 
----
-Built with ❤️ for the Next Billion Users.
+```bash
+GROQ_API_KEY=your_key_here
+```
+
+If no Groq key is configured, ADAPT stays runnable in demo mode.
+
+## Demo Script
+
+1. Open the dashboard.
+2. Click `Run Active Browser Probe`.
+3. Ask a general question on WiFi.
+4. Switch to 2G and ask a public-service question.
+5. Ask a similar non-sensitive question again to show semantic cache behavior.
+6. Ask a UPI/PIN/health prompt to show safe cache skip.
+7. Point to the trace chips: network tier, compression, task type, model, cache policy.
+
+## Evaluation
+
+Use [eval_prompts.json](./eval_prompts.json) for Hinglish, public-service, agriculture, health, education, and financial-safety prompts.
+
+Core tests:
+
+```bash
+python -m unittest discover tests
+```
+
+## One-line Pitch
+
+ADAPT is an AI QoS gateway that keeps LLM apps usable when network quality collapses.

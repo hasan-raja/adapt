@@ -92,8 +92,15 @@ class SemanticCache:
         lowered = text.lower()
         return not any(term in lowered for term in SAFETY_SENSITIVE_TERMS)
 
+    def cache_skip_reason(self, text: str) -> Optional[str]:
+        """Return a short reason when semantic reuse is disabled for safety."""
+        lowered = text.lower()
+        for term in SAFETY_SENSITIVE_TERMS:
+            if term in lowered:
+                return f"sensitive term: {term}"
+        return None
+
     def _get_embedding(self, text: str) -> Any:
-        self._ensure_model_loaded()
         if self._embedder is None:
             return None
         try:
@@ -104,6 +111,39 @@ class SemanticCache:
             return embedding.reshape(1, -1).astype('float32')
         except Exception:
             return None
+
+    def warmup(self) -> None:
+        """
+        Load embeddings outside the request path and index any hash-only entries
+        collected before the model was ready.
+        """
+        self._ensure_model_loaded()
+        if self._embedder is not None:
+            self._rebuild_index()
+
+    def is_semantic_ready(self) -> bool:
+        return self._embedder is not None and self._index is not None
+
+    def _rebuild_index(self) -> None:
+        """Rebuild FAISS from cached entries saved while embeddings were cold."""
+        if self._embedder is None:
+            return
+        try:
+            import faiss
+
+            self._index = faiss.IndexFlatIP(self._embedding_dim)
+            self._keys_in_index = []
+            for key, meta in self._cache_metadata.items():
+                if self._is_expired(key):
+                    continue
+                original_text = meta.get("original_text", "")
+                embedding = self._get_embedding(original_text)
+                if embedding is not None:
+                    self._index.add(embedding)
+                    self._keys_in_index.append(key)
+            self._save_to_disk()
+        except Exception as e:
+            print(f"Error rebuilding semantic index: {e}")
 
     def _is_expired(self, key: str) -> bool:
         meta = self._cache_metadata.get(key)
@@ -165,7 +205,7 @@ class SemanticCache:
             return self._cache_values[hash_key]
 
         # 2. Try semantic match
-        if self._index and self._index.ntotal > 0:
+        if self.is_semantic_ready() and self._index.ntotal > 0:
             query_emb = self._get_embedding(text_lower)
             if query_emb is not None:
                 # Search top 1
@@ -201,7 +241,7 @@ class SemanticCache:
         self._cache_values[hash_key] = response
         self._cache_metadata[hash_key] = {
             'created_at': time.time(),
-            'original_text': text[:50]
+            'original_text': text
         }
         
         # Save to disk after each put
@@ -215,7 +255,7 @@ class SemanticCache:
             "hit_rate": round(self._hits / total, 3) if total > 0 else 0.0,
             "entries": len(self._cache_values),
             "faiss_index_size": self._index.ntotal if self._index else 0,
-            "engine": "FAISS (Persistent)" if self._index else "Hash-only"
+            "engine": "FAISS (Persistent)" if self.is_semantic_ready() else "Hash-only warming"
         }
 
     def clear(self) -> None:

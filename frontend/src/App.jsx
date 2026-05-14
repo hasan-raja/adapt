@@ -149,6 +149,13 @@ function App() {
   const [standardResponse, setStandardResponse] = useState('')
   const [standardLoading, setStandardLoading] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState('disconnected')
+  const [sessionId] = useState(() => `session-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+  const [probeStatus, setProbeStatus] = useState({
+    source: 'simulator',
+    bandwidth: null,
+    latency: null,
+    running: false,
+  })
   const wsRef = useRef(null)
 
   // WebSocket connection
@@ -206,6 +213,36 @@ function App() {
     return hints
   }
 
+  const runActiveProbe = async () => {
+    setProbeStatus(prev => ({ ...prev, running: true }))
+    try {
+      const pingStart = performance.now()
+      await fetch('/api/network/ping', { cache: 'no-store' })
+      const latency = performance.now() - pingStart
+
+      const payloadStart = performance.now()
+      const response = await fetch(`/api/network/probe-payload?size_kb=128&t=${Date.now()}`, { cache: 'no-store' })
+      const blob = await response.blob()
+      const elapsedSec = Math.max((performance.now() - payloadStart) / 1000, 0.001)
+      const bandwidth = ((blob.size * 8) / 1000) / elapsedSec
+
+      setProbeStatus({
+        source: 'active probe',
+        bandwidth,
+        latency,
+        running: false,
+      })
+
+      return {
+        observed_bandwidth_kbps: bandwidth,
+        observed_latency_ms: latency,
+      }
+    } catch (e) {
+      setProbeStatus(prev => ({ ...prev, running: false, source: 'probe failed' }))
+      return getNetworkHints()
+    }
+  }
+
   // Run demo simulation
   const runDemo = async () => {
     setConversations([])
@@ -233,7 +270,12 @@ function App() {
     try {
       const payload = {
         message: outgoingMessage,
+        session_id: sessionId,
         ...getNetworkHints(),
+      }
+      if (probeStatus.bandwidth && probeStatus.latency && !options.forceTier) {
+        payload.observed_bandwidth_kbps = probeStatus.bandwidth
+        payload.observed_latency_ms = probeStatus.latency
       }
       if (options.forceTier) payload.force_tier = options.forceTier
 
@@ -267,6 +309,9 @@ function App() {
         message: outgoingMessage,
         response: adaptData.response,
         compression: adaptData.compression_level,
+        model: adaptData.model_used,
+        task: adaptData.task_type,
+        cacheReason: adaptData.cache_skipped_reason,
         tokens: adaptData.tokens_used,
         cost: adaptData.cost_rs,
         cache: adaptData.cache_hit,
@@ -297,7 +342,7 @@ function App() {
         <div className="max-w-4xl w-full text-center space-y-8">
           <div className="space-y-4 animate-float">
             <div className="flex justify-center mb-6">
-              <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-4xl shadow-2xl shadow-blue-500/20">⚡</div>
+              <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-3xl font-bold shadow-2xl shadow-blue-500/20">A</div>
             </div>
             <h1 className="text-6xl md:text-8xl font-bold tracking-tighter">
               ADAPT<span className="text-blue-500">.</span>
@@ -318,15 +363,15 @@ function App() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
             <div className="glass-card p-6">
-              <div className="text-blue-400 mb-2">✦ Survival Mode</div>
+              <div className="text-blue-400 mb-2">Survival Mode</div>
               <p className="text-sm text-slate-400">60-70% prompt compression for 2G network resilience.</p>
             </div>
             <div className="glass-card p-6">
-              <div className="text-emerald-400 mb-2">✦ Smart Routing</div>
+              <div className="text-emerald-400 mb-2">Smart Routing</div>
               <p className="text-sm text-slate-400">Dynamic model selection (1B to 30B+) based on real-time QoS.</p>
             </div>
             <div className="glass-card p-6">
-              <div className="text-amber-400 mb-2">✦ Semantic Cache</div>
+              <div className="text-amber-400 mb-2">Semantic Cache</div>
               <p className="text-sm text-slate-400">Zero-latency responses using MiniLM embedding similarity.</p>
             </div>
           </div>
@@ -348,7 +393,7 @@ function App() {
       <nav className="border-b border-glass-border bg-bg-secondary/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('landing')}>
-            <span className="text-2xl">⚡</span>
+            <span className="text-lg font-bold text-blue-400">A</span>
             <span className="text-xl font-bold tracking-tight">ADAPT</span>
           </div>
           <div className="flex items-center gap-4">
@@ -360,7 +405,7 @@ function App() {
                 : 'border-slate-700 text-slate-500 hover:border-slate-400'
               }`}
             >
-              {comparisonMode ? '⚔️ BATTLE MODE ACTIVE' : '🛡️ ENABLE COMPARISON'}
+              {comparisonMode ? 'COMPARISON ACTIVE' : 'ENABLE COMPARISON'}
             </button>
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border`}>
               <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></div>
@@ -391,6 +436,25 @@ function App() {
                   {TIER_LABELS[tier]}
                 </button>
               ))}
+            </div>
+
+            <button
+              onClick={runActiveProbe}
+              disabled={probeStatus.running}
+              className="w-full btn-secondary py-2 text-xs"
+            >
+              {probeStatus.running ? 'Measuring network...' : 'Run Active Browser Probe'}
+            </button>
+
+            <div className="rounded-lg border border-glass-border bg-slate-950/60 p-3 text-xs text-slate-400">
+              <div className="flex justify-between">
+                <span>Probe source</span>
+                <span className="font-mono text-slate-200">{probeStatus.source}</span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 font-mono">
+                <span>{probeStatus.bandwidth ? `${probeStatus.bandwidth.toFixed(0)} kbps` : 'no bandwidth reading'}</span>
+                <span>{probeStatus.latency ? `${probeStatus.latency.toFixed(0)} ms RTT` : 'no RTT reading'}</span>
+              </div>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-glass-border">
@@ -433,7 +497,7 @@ function App() {
             </div>
             <div className="metric-card">
               <span className="metric-label">Cost Saved</span>
-              <span className="metric-value text-amber-400">₹{((metrics.requests_served || 0) * 12 - (metrics.total_cost_rs || 0)).toFixed(1)}</span>
+              <span className="metric-value text-amber-400">Rs {((metrics.requests_served || 0) * 12 - (metrics.total_cost_rs || 0)).toFixed(1)}</span>
             </div>
             <div className="metric-card">
               <span className="metric-label">Events</span>
@@ -510,7 +574,7 @@ function App() {
 
               {conversations.length === 0 && !comparisonMode && (
                 <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-2">
-                  <div className="text-4xl">📭</div>
+                  <div className="text-4xl font-display text-slate-500">ADAPT</div>
                   <p>No activity yet. Send a message or run the demo.</p>
                 </div>
               )}
@@ -519,14 +583,16 @@ function App() {
                   <div className="flex items-center gap-3">
                     <span className={`tier-badge ${TIER_COLORS[conv.tier]}`}>{TIER_LABELS[conv.tier]}</span>
                     {conv.cache && <span className="tier-badge border-purple-500 text-purple-400 bg-purple-500/10">Semantic Hit</span>}
-                    <span className="text-[10px] text-slate-500 font-mono">{(conv.tokens || 0)} tokens • ₹{(conv.cost || 0).toFixed(2)}</span>
+                    <span className="text-[10px] text-slate-500 font-mono">{(conv.tokens || 0)} tokens / Rs {(conv.cost || 0).toFixed(2)}</span>
+                    {conv.model && <span className="text-[10px] text-blue-300 font-mono bg-blue-500/10 border border-blue-500/20 rounded-full px-2 py-1">{conv.model}</span>}
+                    {conv.task && <span className="text-[10px] text-slate-300 font-mono bg-slate-900 border border-slate-800 rounded-full px-2 py-1">{conv.task}</span>}
                   </div>
                   
                   {conv.trace && (
                     <div className="flex flex-wrap gap-2 mb-2">
                       {conv.trace.map((step, i) => (
                         <span key={i} className="text-[9px] bg-slate-900 border border-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-mono">
-                          {i === 0 ? '🔍' : i === 1 ? '📡' : '🧠'} {step}
+                          {step}
                         </span>
                       ))}
                     </div>
@@ -538,6 +604,11 @@ function App() {
                   <div className="bg-blue-600/10 rounded-2xl p-4 border border-blue-500/20 ml-4">
                     <p className="text-sm leading-relaxed italic"><span className="text-emerald-400 font-bold mr-2">A:</span>{conv.response}</p>
                   </div>
+                  {conv.cacheReason && (
+                    <div className="ml-4 text-[10px] text-amber-300 font-mono">
+                      Cache reuse disabled: {conv.cacheReason}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -565,12 +636,10 @@ function App() {
 
           <section className="glass-card p-6 bg-gradient-to-br from-blue-900/10 to-purple-900/10 border-blue-500/20">
             <div className="flex items-start gap-4">
-              <div className="text-2xl">💡</div>
               <div>
                 <h4 className="text-sm font-bold text-white mb-1">Infrastructure Signal</h4>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Notice how the 1B model under 2G network aggressive compression maintains the core intent while reducing token load by ~60%. 
-                  Semantic caching ensures that "near-duplicate" queries on slow networks bypass the LLM entirely, saving latency and cost.
+                  ADAPT now supports active browser probing, request-boundary model switching, session memory, task-aware compression, and safe semantic-cache skips. Manual tier buttons remain as demo controls for repeatable interviews.
                 </p>
               </div>
             </div>

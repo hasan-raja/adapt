@@ -1,0 +1,72 @@
+[
+  {
+    "id": "ration_card_1",
+    "tier": "2g",
+    "language": "hinglish",
+    "prompt": "Mera ration card application stuck hai, kya karu?",
+    "category": "public_service"
+  },
+  {
+    "id": "pm_kisan_1",
+    "tier": "3g",
+    "language": "english",
+    "prompt": "How do I apply for PM-Kisan if my land record has an old name?",
+    "category": "public_service"
+  },
+  {
+    "id": "upi_safety_1",
+    "tier": "3g",
+    "language": "hinglish",
+    "prompt": "UPI payment receive karne ke liye PIN dalna hota hai kya?",
+    "category": "financial_safety"
+  },
+  {
+    "id": "crop_insurance_1",
+    "tier": "2g",
+    "language": "english",
+    "prompt": "Explain crop insurance claim steps after heavy rain damaged my field.",
+    "category": "agriculture"
+  },
+  {
+    "id": "dengue_1",
+    "tier": "3g",
+    "language": "english",
+    "prompt": "What dengue symptoms mean I should go to a hospital urgently?",
+    "category": "health"
+  },
+  {
+    "id": "scholarship_1",
+    "tier": "4g",
+    "language": "english",
+    "prompt": "What documents are usually needed for a state school scholarship application?",
+    "category": "education"
+  },
+  {
+    "id": "aadhaar_pan_1",
+    "tier": "2g",
+    "language": "english",
+    "prompt": "Aadhaar link with PAN card procedure?",
+    "category": "identity"
+  },
+  {
+    "id": "farmer_water_1",
+    "tier": "4g",
+    "language": "english",
+    "prompt": "Best low-cost ways to save water for a small farm in a dry region?",
+    "category": "agriculture"
+  },
+  {
+    "id": "first_phone_1",
+    "tier": "2g",
+    "language": "hinglish",
+    "prompt": "Mere paas slow phone hai, online form kaise bharu bina fail hue?",
+    "category": "digital_literacy"
+  },
+  {
+    "id": "teacher_summary_1",
+    "tier": "3g",
+    "language": "english",
+    "prompt": "Summarize photosynthesis for a class 7 student in simple words.",
+    "category": "education"
+  }
+]
