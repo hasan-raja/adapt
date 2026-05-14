@@ -60,6 +60,8 @@ class RequestPayload(BaseModel):
 
 
 class ResponsePayload(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     response: str
     tier_used: NetworkTier
     compression_level: CompressionLevel

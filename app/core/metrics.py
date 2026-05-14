@@ -3,7 +3,7 @@ Metrics tracking for adaptation events.
 """
 
 from collections import deque
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 from app.models import NetworkTier, CompressionLevel, AdaptationEvent
 
@@ -35,7 +35,7 @@ class MetricsCollector:
         self._event_counter += 1
         event = AdaptationEvent(
             id=self._event_counter,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             from_tier=from_tier,
             to_tier=to_tier,
             compression_applied=compression,
