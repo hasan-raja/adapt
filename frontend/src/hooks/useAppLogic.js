@@ -40,7 +40,7 @@ export const useAppLogic = () => {
     latency: null,
     running: false,
   });
-  
+
   const wsRef = useRef(null);
 
   // WebSocket connection
@@ -79,7 +79,7 @@ export const useAppLogic = () => {
   const changeTier = async (tier) => {
     setCurrentTier(tier);
     try {
-      const res = await fetch('/api/network/status?force_tier=' + tier);
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/network/status?force_tier=` + tier);
       const data = await res.json();
       setNetworkStatus(data);
     } catch (e) {
@@ -101,11 +101,11 @@ export const useAppLogic = () => {
     setProbeStatus(prev => ({ ...prev, running: true }));
     try {
       const pingStart = performance.now();
-      await fetch('/api/network/ping', { cache: 'no-store' });
+      await fetch(`${import.meta.env.VITE_API_URL}/api/network/ping`, { cache: 'no-store' });
       const latency = performance.now() - pingStart;
 
       const payloadStart = performance.now();
-      const response = await fetch(`/api/network/probe-payload?size_kb=128&t=${Date.now()}`, { cache: 'no-store' });
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/network/probe-payload?size_kb=128&t=${Date.now()}`, { cache: 'no-store' });
       const blob = await response.blob();
       const elapsedSec = Math.max((performance.now() - payloadStart) / 1000, 0.001);
       const bandwidth = ((blob.size * 8) / 1000) / elapsedSec;
@@ -134,7 +134,7 @@ export const useAppLogic = () => {
     if (!outgoingMessage.trim()) return;
     setLoading(true);
     setResponse('');
-    
+
     if (shouldCompare) {
       setStandardLoading(true);
       setStandardResponse('');
@@ -152,7 +152,7 @@ export const useAppLogic = () => {
       }
       if (options.forceTier) payload.force_tier = options.forceTier;
 
-      const adaptPromise = fetch('/api/adapt', {
+      const adaptPromise = fetch(`${import.meta.env.VITE_API_URL}/api/adapt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -172,7 +172,7 @@ export const useAppLogic = () => {
 
       const adaptData = await adaptPromise;
       setResponse(adaptData.response);
-      
+
       const newConv = {
         id: Date.now(),
         tier: adaptData.tier_used,
