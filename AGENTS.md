@@ -32,6 +32,5 @@ Client → Network Probe → ADAPT Proxy → [Compression] → [Cache] → [Rout
 
 ## Environment Variables
 ```
-SARVAM_API_KEY=your_key_here
-OPENAI_API_KEY=your_key_here  (fallback)
+GROQ_API_KEY=your_key_here
 ```

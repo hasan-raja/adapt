@@ -8,7 +8,7 @@ from app.models import NetworkTier, CompressionLevel, NetworkStatus
 
 
 # Cost per 1K tokens in INR
-# Adjusted for Groq/Sarvam tier benchmarks
+# Adjusted for Groq tier benchmarks
 COST_PER_1K_TOKENS: dict[str, float] = {
     "1B": 0.50,
     "3B": 1.50,
